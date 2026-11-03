@@ -81,8 +81,25 @@ pub struct StarryGame {
 }
 
 impl StarryGame {
-    pub fn new() -> Self {
-        let mut rng = StdRng::from_entropy();
+    /// The seed a staged run scrambles from.
+    ///
+    /// **A staged run exists to be photographed, and entropy is the wrong
+    /// thing to photograph.** Every screenshot of starry was a different
+    /// scramble, and so would every picture test be. Any seed does; this is
+    /// the first one tried, kept because the board it deals is a proper
+    /// scramble with no run of the painting left in place.
+    const POSED_SEED: u64 = 7;
+
+    /// `staged` rather than a call to `crate::staged()`, so that a picture
+    /// test can ask for the photographed board without putting
+    /// `--screenshot` in its own arguments. `main` passes what the
+    /// arguments say.
+    pub fn new(staged: bool) -> Self {
+        let mut rng = if staged {
+            StdRng::seed_from_u64(Self::POSED_SEED)
+        } else {
+            StdRng::from_entropy()
+        };
 
         Self {
             board: Board::scrambled(&mut rng, 140),
@@ -196,7 +213,7 @@ impl StarryGame {
 
 impl Default for StarryGame {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
@@ -424,13 +441,51 @@ impl Game for StarryGame {
 mod tests {
     use super::*;
 
+    /// How big the picture is: the engine's own size, said once there and
+    /// read here, per its spec 0062.
+    const WIDE: u32 = blitzkit::picture::SIZE.0;
+    const TALL: u32 = blitzkit::picture::SIZE.1;
+
+    /// The painting cut up and shuffled, held against a picture of it.
+    /// Spec 0005.
+    ///
+    /// **The staging is a seed and nothing else.** The opening frame is
+    /// this game's picture, so a staged run stages nothing and only stops
+    /// what would move. What it could not do was come out the same twice:
+    /// the scramble was from entropy, so every screenshot and every run
+    /// of this test would be a different board. `POSED_SEED` is that fixed.
+    ///
+    /// One `update` at no time at all, which is what clears the motion and
+    /// lays out the tray.
+    #[test]
+    fn the_shuffled_painting_looks_right() {
+        let reference =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pictures/shuffled.png");
+
+        blitzkit::picture::drawn_looks_right(&reference, (WIDE, TALL), |renderer| {
+            let mut game = StarryGame::new(true);
+            let mut geometry = Geometry::new();
+            let mut text = TextRenderer::new();
+            let sound = SoundSystem::new();
+            let mut scene = Scene::new();
+            let mut camera = Camera::new();
+
+            game.load(renderer);
+            game.initialize(&mut geometry, &mut text, &sound, (WIDE as f32, TALL as f32));
+            game.update(0.0, &mut geometry, &mut text, &sound);
+            game.draw(&mut scene, &mut camera);
+
+            (scene, camera)
+        });
+    }
+
     fn key(key: KeyboardKey) -> KeyboardInput {
         KeyboardInput::new(key, KeyboardKeyState::Pressed, false)
     }
 
     #[test]
     fn escape_cancels_the_mode() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         game.process_keyboard(key(KeyboardKey::L));
         assert!(game.lifting.is_open());
 
@@ -442,7 +497,7 @@ mod tests {
 
     #[test]
     fn escape_outside_the_mode_still_quits() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         assert!(!game.lifting.is_open());
 
         game.process_keyboard(key(KeyboardKey::Escape));
@@ -452,7 +507,7 @@ mod tests {
 
     #[test]
     fn the_arrows_stop_sliding_while_the_mode_is_open() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         game.process_keyboard(key(KeyboardKey::L));
         let before = game.board;
 
@@ -465,7 +520,7 @@ mod tests {
 
     #[test]
     fn a_hint_marks_the_run() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         assert!(!game.hints.used());
 
         game.process_keyboard(key(KeyboardKey::H));
@@ -476,7 +531,7 @@ mod tests {
 
     #[test]
     fn watching_stops_on_a_key() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         for _ in 0..4 {
             game.process_keyboard(key(KeyboardKey::H));
         }
@@ -489,7 +544,7 @@ mod tests {
 
     #[test]
     fn escape_stops_watching() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         for _ in 0..4 {
             game.process_keyboard(key(KeyboardKey::H));
         }
@@ -503,7 +558,7 @@ mod tests {
 
     #[test]
     fn watching_plays_the_board_towards_solved() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         let before = game.board.par();
         for _ in 0..4 {
             game.process_keyboard(key(KeyboardKey::H));
@@ -528,7 +583,7 @@ mod tests {
     fn a_frame_does_not_leave_its_text_behind() {
         // nothing clears these but the game, and two lines a frame reached
         // wgpu's buffer limit after a few minutes of running
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         let mut geometry = Geometry::new();
         let mut text_renderer = TextRenderer::new();
         let sounds = SoundSystem::new();
@@ -549,7 +604,7 @@ mod tests {
 
     #[test]
     fn a_press_moves_the_board_and_starts_the_drawing_catching_up() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         game.board = Board::solved();
         let before = game.board;
 
@@ -561,7 +616,7 @@ mod tests {
 
     #[test]
     fn a_press_against_the_edge_does_nothing_at_all() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         game.board = Board::solved();
         let before = game.board;
 
@@ -574,7 +629,7 @@ mod tests {
 
     #[test]
     fn a_tile_is_drawn_at_its_cell_once_it_has_arrived() {
-        let mut game = StarryGame::new();
+        let mut game = StarryGame::new(false);
         game.board = Board::solved();
         game.press(Direction::Up);
 
