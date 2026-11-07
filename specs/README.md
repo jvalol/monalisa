@@ -13,7 +13,3 @@ not a priority, and it never changes once a spec exists.
 | [0003](0003-lifting.md) | Aiming a lift, the warning, and the way back |
 | [0004](0004-hints.md) | Four levels of help, from a number to a demonstration |
 | [0005](0005-a-picture-of-the-shuffled-painting.md) | The staged board held against a picture of it, scrambled from a seed so two runs agree |
-
----
-
-I asked AI to draft this for me. I've edited it. Any surviving AI smells are my oversight.
